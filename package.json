@@ -1,0 +1,86 @@
+{
+  "name": "devin-cursor-plugin",
+  "displayName": "Devin Cursor Plugin",
+  "description": "Integrate Devin sessions directly into Cursor",
+  "version": "0.0.2",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onCommand:devin.openSessions",
+    "onCommand:devin.setApiKey",
+    "onCommand:devin.setUserEmail"
+  ],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "devin.openSessions",
+        "title": "Devin: Open Sessions",
+        "category": "Devin"
+      },
+      {
+        "command": "devin.setApiKey",
+        "title": "Devin: Set API Key",
+        "category": "Devin"
+      },
+      {
+        "command": "devin.setUserEmail",
+        "title": "Devin: Set User Email",
+        "category": "Devin"
+      }
+    ],
+    "configuration": {
+      "title": "Devin",
+      "properties": {
+        "devin.apiBaseUrl": {
+          "type": "string",
+          "default": "https://api.devin.ai",
+          "description": "Base URL for Devin API"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run package",
+    "compile": "webpack",
+    "watch": "webpack --watch",
+    "package": "webpack --mode production --devtool hidden-source-map",
+    "compile-tests": "tsc -p . --outDir out",
+    "watch-tests": "tsc -p . -w --outDir out",
+    "pretest": "npm run compile-tests && npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/glob": "^8.1.0",
+    "@types/mocha": "^10.0.6",
+    "@types/node": "20.x",
+    "@types/react-dom": "^19.2.3",
+    "@types/react-syntax-highlighter": "^15.5.13",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^6.15.0",
+    "@typescript-eslint/parser": "^6.15.0",
+    "eslint": "^8.56.0",
+    "copy-webpack-plugin": "^11.0.0",
+    "css-loader": "^6.8.1",
+    "glob": "^10.3.10",
+    "mocha": "^10.2.0",
+    "style-loader": "^3.3.3",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.3.3",
+    "webpack": "^5.89.0",
+    "webpack-cli": "^5.1.4"
+  },
+  "dependencies": {
+    "@vscode/webview-ui-toolkit": "^1.4.0",
+    "axios": "^1.6.5",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-markdown": "^9.0.1",
+    "react-syntax-highlighter": "^15.5.0"
+  }
+}
