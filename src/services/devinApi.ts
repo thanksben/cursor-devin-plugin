@@ -56,12 +56,7 @@ export class DevinApiService {
   ): Promise<DevinSession[]> {
     try {
       const client = await this.getClient(apiKey);
-      // Always fetch slightly more if filtering by email locally,
-      // but strictly speaking, without server-side filtering, offset/limit might be tricky.
-      // For now, we pass limit/offset to the API. If filtering by email, it happens after.
-      // Ideally, we should loop to find enough matches, but for simplicity, we filter the page.
-
-      const params: any = { limit: 100, offset }; // Fetch more to allow filtering
+      const params: any = { limit: 100, offset };
       if (tags && tags.length > 0) {
         params.tags = tags;
       }
@@ -74,14 +69,6 @@ export class DevinApiService {
         );
       }
 
-      // Apply pagination manually if we fetched 100 but only want 'limit'
-      // Wait, if we use the API's limit/offset, we get that slice.
-      // If we filter by email client-side, the API pagination is "raw sessions".
-      // Correct approach: Fetch larger batches or warn user.
-      // We'll adhere to the user request: use limit/offset params, then filter.
-      // To properly support "next 10 matching sessions", we'd need to scan.
-      // For this implementation, I will apply the limit AFTER filtering on the fetched batch.
-
       return sessions.slice(0, limit);
     } catch (error) {
       this.handleError(error);
@@ -93,7 +80,6 @@ export class DevinApiService {
     try {
       const client = await this.getClient(apiKey);
       const response = await client.get(`/v1/sessions/${sessionId}`);
-      // Log response for debugging chat messages
       console.log(
         "Session details response:",
         JSON.stringify(response.data, null, 2)
@@ -127,6 +113,18 @@ export class DevinApiService {
     try {
       const client = await this.getClient(apiKey);
       await client.post(`/v1/sessions/${sessionId}/message`, { message });
+      return true;
+    } catch (error) {
+      this.handleError(error);
+      return false;
+    }
+  }
+
+  async stopSession(apiKey: string, sessionId: string): Promise<boolean> {
+    try {
+      const client = await this.getClient(apiKey);
+      // Use DELETE method instead of POST
+      await client.delete(`/v1/sessions/${sessionId}`);
       return true;
     } catch (error) {
       this.handleError(error);

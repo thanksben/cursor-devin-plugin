@@ -100,6 +100,9 @@ class DevinPanel {
           case "sendMessage":
             this._sendMessage(apiKey, message.sessionId, message.message);
             break;
+          case "stopSession":
+            this._stopSession(apiKey, message.sessionId);
+            break;
           case "openLink":
             if (message.url) {
               vscode.env.openExternal(vscode.Uri.parse(message.url));
@@ -129,7 +132,7 @@ class DevinPanel {
       {
         enableScripts: true,
         localResourceRoots: [vscode.Uri.joinPath(extensionUri, "dist")],
-        retainContextWhenHidden: true, // Keep state when switching tabs
+        retainContextWhenHidden: true,
       }
     );
 
@@ -150,8 +153,6 @@ class DevinPanel {
   private async _listSessions(apiKey: string, params: any) {
     try {
       const userEmail = await SecretStorageManager.instance.getUserEmail();
-      // Only use email for filtering if it exists AND mySessions is true (or undefined, assuming default)
-      // If mySessions is explicitly false, pass undefined to listSessions
       const filterEmail = params.mySessions !== false ? userEmail : undefined;
 
       const sessions = await DevinApiService.instance.listSessions(
@@ -222,6 +223,21 @@ class DevinPanel {
       }
     } catch (e) {
       vscode.window.showErrorMessage("Failed to send message");
+    }
+  }
+
+  private async _stopSession(apiKey: string, sessionId: string) {
+    try {
+      const success = await DevinApiService.instance.stopSession(
+        apiKey,
+        sessionId
+      );
+      if (success) {
+        vscode.window.showInformationMessage("Session terminated successfully");
+        this._panel.webview.postMessage({ type: "sessionStopped", sessionId });
+      }
+    } catch (e) {
+      vscode.window.showErrorMessage("Failed to terminate session");
     }
   }
 

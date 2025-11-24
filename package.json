@@ -2,7 +2,8 @@
   "name": "devin-cursor-plugin",
   "displayName": "Devin Cursor Plugin",
   "description": "Integrate Devin sessions directly into Cursor",
-  "version": "0.0.2",
+  "icon": "assets/logo.png",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.85.0"
   },

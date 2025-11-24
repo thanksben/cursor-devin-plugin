@@ -14,7 +14,7 @@ interface ChatViewProps {
 
 interface Message {
   role: string;
-  content: string; // This is our internal field, we map 'message' to it
+  content: string;
   created_at?: string;
 }
 
@@ -25,6 +25,8 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
   const [loading, setLoading] = useState(true);
   const [sessionTitle, setSessionTitle] = useState("");
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const [terminating, setTerminating] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -33,12 +35,10 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Handle scroll events to detect if user is near bottom
   const handleScroll = () => {
     if (!containerRef.current) return;
-    
+
     const { scrollTop, scrollHeight, clientHeight } = containerRef.current;
-    // Consider "near bottom" if within 100px of the bottom
     const nearBottom = scrollHeight - scrollTop - clientHeight < 100;
     setIsNearBottom(nearBottom);
   };
@@ -51,7 +51,6 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
       const message = event.data;
       if (message.type === "sessionDetailsResponse") {
         if (message.sessionId === sessionId) {
-          // Handle different potential API structures
           let rawMsgs: any[] = [];
           if (Array.isArray(message.session.messages)) {
             rawMsgs = message.session.messages;
@@ -60,11 +59,9 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
               (e: any) => e.type === "chat" || e.role || e.message
             );
           }
-          
-          // Map API messages to our local Message interface
+
           const mappedMsgs: Message[] = rawMsgs.map((msg: any) => {
-            // Determine role
-            let role = "assistant"; // default
+            let role = "assistant";
             if (msg.role) {
               role = msg.role;
             } else if (msg.type === "initial_user_message") {
@@ -73,15 +70,12 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
               role = "assistant";
             }
 
-            // Determine content
             const content = msg.content || msg.message || "";
-
-            // Determine timestamp
             const created_at = msg.created_at || msg.timestamp;
 
             return { role, content, created_at };
           });
-          
+
           setMessages(mappedMsgs);
           setSessionTitle(message.session.title || "Session");
           setLoading(false);
@@ -90,8 +84,10 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
         setSending(false);
         setInput("");
         fetchSessionDetails();
-        // Force scroll to bottom when sending
         setIsNearBottom(true);
+      } else if (message.type === "sessionStopped") {
+        setTerminating(false);
+        setShowConfirm(false);
       }
     };
 
@@ -102,7 +98,6 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
     };
   }, [sessionId]);
 
-  // Only auto-scroll if user is near bottom
   useEffect(() => {
     if (isNearBottom) {
       scrollToBottom();
@@ -117,6 +112,22 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
     if (!input.trim()) return;
     setSending(true);
     vscode.postMessage({ type: "sendMessage", sessionId, message: input });
+  };
+
+  const handleTerminateClick = () => {
+    console.log("Terminate button clicked");
+    setShowConfirm(true);
+  };
+
+  const confirmTerminate = () => {
+    console.log("Terminating session:", sessionId);
+    setTerminating(true);
+    vscode.postMessage({ type: "stopSession", sessionId });
+    setShowConfirm(false);
+  };
+
+  const cancelTerminate = () => {
+    setShowConfirm(false);
   };
 
   const handleKeyDown = (e: any) => {
@@ -152,6 +163,7 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
         <h3
           style={{
             margin: 0,
+            flexGrow: 1,
             textOverflow: "ellipsis",
             whiteSpace: "nowrap",
             overflow: "hidden",
@@ -159,7 +171,38 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
         >
           {sessionTitle}
         </h3>
+        <VSCodeButton
+          appearance="secondary"
+          onClick={handleTerminateClick}
+          disabled={terminating}
+        >
+          {terminating ? "Terminating..." : "Terminate"}
+        </VSCodeButton>
       </div>
+
+      {showConfirm && (
+        <div
+          style={{
+            backgroundColor: "var(--vscode-notifications-background)",
+            border: "1px solid var(--vscode-notifications-border)",
+            padding: "1rem",
+            display: "flex",
+            alignItems: "center",
+            gap: "1rem",
+            justifyContent: "space-between",
+          }}
+        >
+          <span>Are you sure you want to terminate this session?</span>
+          <div style={{ display: "flex", gap: "0.5rem" }}>
+            <VSCodeButton appearance="primary" onClick={confirmTerminate}>
+              Yes, Terminate
+            </VSCodeButton>
+            <VSCodeButton appearance="secondary" onClick={cancelTerminate}>
+              Cancel
+            </VSCodeButton>
+          </div>
+        </div>
+      )}
 
       <div
         className="messages-container"
