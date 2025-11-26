@@ -4,47 +4,86 @@ interface StatusBadgeProps {
   status: string;
 }
 
-const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
-  let backgroundColor = "var(--vscode-badge-background)";
-  let color = "var(--vscode-badge-foreground)";
-
+const getStatusColor = (status: string): string => {
   switch (status.toLowerCase()) {
-    case "running":
+    // Active states - Green
     case "working":
-      backgroundColor = "var(--vscode-charts-green)";
-      color = "#ffffff";
-      break;
-    case "stopped":
-    case "terminated":
-    case "done":
-      backgroundColor = "var(--vscode-charts-red)";
-      color = "#ffffff";
-      break;
+    case "resumed":
+      return "#4CAF50"; // Green
+
+    // Needs attention - Orange/Amber
     case "blocked":
+      return "#FF9800"; // Orange
+
+    // Pending actions - Yellow
+    case "suspend_requested":
+    case "suspend_requested_frontend":
+      return "#FFC107"; // Amber/Yellow
+
+    // Resume pending - Cyan/Light blue
+    case "resume_requested":
+    case "resume_requested_frontend":
+      return "#00BCD4"; // Cyan
+
+    // Completed - Blue
+    case "finished":
+      return "#2196F3"; // Blue
+
+    // Inactive/Dead - Gray
+    case "expired":
+      return "#9E9E9E"; // Gray
+
+    // Error states - Red
     case "error":
-      backgroundColor = "var(--vscode-charts-orange)";
-      color = "#ffffff";
-      break;
+    case "failed":
+      return "#F44336"; // Red
+
+    // Default - Gray
     default:
-      backgroundColor = "var(--vscode-badge-background)";
-      color = "var(--vscode-badge-foreground)";
-      break;
+      return "#757575"; // Dark gray
   }
+};
+
+const getStatusLabel = (status: string): string => {
+  switch (status.toLowerCase()) {
+    case "working":
+      return "Working - Devin is actively working";
+    case "blocked":
+      return "Blocked - Waiting for user input";
+    case "expired":
+      return "Expired - Session has expired";
+    case "finished":
+      return "Finished - Session completed";
+    case "suspend_requested":
+    case "suspend_requested_frontend":
+      return "Suspend Requested";
+    case "resume_requested":
+    case "resume_requested_frontend":
+      return "Resume Requested";
+    case "resumed":
+      return "Resumed - Session is active again";
+    default:
+      return status;
+  }
+};
+
+const StatusBadge: React.FC<StatusBadgeProps> = ({ status }) => {
+  const color = getStatusColor(status);
+  const label = getStatusLabel(status);
 
   return (
     <span
+      title={label}
       style={{
-        backgroundColor,
-        color,
-        padding: "2px 6px",
-        borderRadius: "4px",
-        fontSize: "0.85em",
-        fontWeight: "bold",
-        textTransform: "uppercase",
+        display: "inline-block",
+        width: "10px",
+        height: "10px",
+        borderRadius: "50%",
+        backgroundColor: color,
+        boxShadow: `0 0 4px ${color}80`,
+        cursor: "help",
       }}
-    >
-      {status}
-    </span>
+    />
   );
 };
 

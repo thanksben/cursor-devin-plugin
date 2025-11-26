@@ -1,7 +1,9 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { vscDarkPlus } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { vscode } from "../utilities/vscode";
 
 interface MessageBubbleProps {
   role: string;
@@ -57,17 +59,18 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
       <div
         style={{
           backgroundColor: isUser
-            ? "#37373D" // Dark grey/blue tint for user messages in dark mode
-            : "var(--vscode-editor-inactiveSelectionBackground)",
-          color: "var(--vscode-editor-foreground)", // Use standard foreground text color
-          padding: "0.8rem",
-          borderRadius: "8px",
+            ? "#2B5278" // Telegram-style muted blue for user messages
+            : "#313244", // Catppuccin Surface0 - lighter dark for Devin
+          color: isUser ? "#FFFFFF" : "#CDD6F4", // White for user, soft white for Devin
+          padding: "0.75rem 1rem",
+          borderRadius: isUser ? "12px 12px 4px 12px" : "12px 12px 12px 4px",
           maxWidth: "85%",
           wordWrap: "break-word",
-          border: isUser ? "1px solid var(--vscode-widget-border)" : "none",
+          boxShadow: "0 1px 2px rgba(0, 0, 0, 0.2)",
         }}
       >
         <ReactMarkdown
+          remarkPlugins={[remarkGfm]}
           components={{
             code({ node, inline, className, children, ...props }: any) {
               const match = /language-(\w+)/.exec(className || "");
@@ -83,6 +86,29 @@ const MessageBubble: React.FC<MessageBubbleProps> = ({
                 <code {...props} className={className}>
                   {children}
                 </code>
+              );
+            },
+            a({ href, children }: any) {
+              const handleClick = (e: React.MouseEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (href) {
+                  vscode.postMessage({ type: "openLink", url: href });
+                }
+              };
+              return (
+                <span
+                  onClick={handleClick}
+                  style={{
+                    color: "#89B4FA", // Catppuccin blue - visible on both backgrounds
+                    textDecoration: "underline",
+                    cursor: "pointer",
+                  }}
+                  title={href}
+                  role="link"
+                >
+                  {children}
+                </span>
               );
             },
           }}

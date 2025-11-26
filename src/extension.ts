@@ -1,10 +1,12 @@
 import * as vscode from "vscode";
 import { SecretStorageManager } from "./services/secretStorage";
 import { DevinApiService } from "./services/devinApi";
+import { WatchlistManager } from "./services/watchlistManager";
 
 export function activate(context: vscode.ExtensionContext) {
-  // Initialize Secret Storage
+  // Initialize Secret Storage and Watchlist
   SecretStorageManager.init(context);
+  WatchlistManager.init(context);
 
   // Register command to set API Key
   context.subscriptions.push(
@@ -108,6 +110,18 @@ class DevinPanel {
               vscode.env.openExternal(vscode.Uri.parse(message.url));
             }
             break;
+          case "getWatchlist":
+            this._getWatchlist();
+            break;
+          case "addToWatchlist":
+            this._addToWatchlist(message.sessionId);
+            break;
+          case "removeFromWatchlist":
+            this._removeFromWatchlist(message.sessionId);
+            break;
+          case "isInWatchlist":
+            this._isInWatchlist(message.sessionId);
+            break;
         }
       },
       null,
@@ -166,6 +180,7 @@ class DevinPanel {
         type: "sessionsResponse",
         sessions,
         total: sessions.length,
+        isSearch: params.isSearch || false,
       });
     } catch (e) {
       vscode.window.showErrorMessage("Failed to list sessions");
@@ -238,6 +253,52 @@ class DevinPanel {
       }
     } catch (e) {
       vscode.window.showErrorMessage("Failed to terminate session");
+    }
+  }
+
+  private async _getWatchlist() {
+    try {
+      const watchlist = await WatchlistManager.instance.getWatchlist();
+      this._panel.webview.postMessage({ type: "watchlistResponse", watchlist });
+    } catch (e) {
+      vscode.window.showErrorMessage("Failed to get watchlist");
+    }
+  }
+
+  private async _addToWatchlist(sessionId: string) {
+    try {
+      await WatchlistManager.instance.addToWatchlist(sessionId);
+      const watchlist = await WatchlistManager.instance.getWatchlist();
+      this._panel.webview.postMessage({ type: "watchlistResponse", watchlist });
+      vscode.window.showInformationMessage("Session added to watchlist");
+    } catch (e) {
+      vscode.window.showErrorMessage("Failed to add to watchlist");
+    }
+  }
+
+  private async _removeFromWatchlist(sessionId: string) {
+    try {
+      await WatchlistManager.instance.removeFromWatchlist(sessionId);
+      const watchlist = await WatchlistManager.instance.getWatchlist();
+      this._panel.webview.postMessage({ type: "watchlistResponse", watchlist });
+      vscode.window.showInformationMessage("Session removed from watchlist");
+    } catch (e) {
+      vscode.window.showErrorMessage("Failed to remove from watchlist");
+    }
+  }
+
+  private async _isInWatchlist(sessionId: string) {
+    try {
+      const isInWatchlist = await WatchlistManager.instance.isInWatchlist(
+        sessionId
+      );
+      this._panel.webview.postMessage({
+        type: "isInWatchlistResponse",
+        sessionId,
+        isInWatchlist,
+      });
+    } catch (e) {
+      vscode.window.showErrorMessage("Failed to check watchlist");
     }
   }
 

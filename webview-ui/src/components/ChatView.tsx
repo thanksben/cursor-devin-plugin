@@ -27,6 +27,7 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [terminating, setTerminating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
+  const [isInWatchlist, setIsInWatchlist] = useState(false);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -45,6 +46,7 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
 
   useEffect(() => {
     fetchSessionDetails();
+    vscode.postMessage({ type: "isInWatchlist", sessionId });
     const interval = setInterval(fetchSessionDetails, 5000);
 
     const handleMessage = (event: MessageEvent) => {
@@ -88,6 +90,13 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
       } else if (message.type === "sessionStopped") {
         setTerminating(false);
         setShowConfirm(false);
+      } else if (message.type === "isInWatchlistResponse") {
+        if (message.sessionId === sessionId) {
+          setIsInWatchlist(message.isInWatchlist);
+        }
+      } else if (message.type === "watchlistResponse") {
+        // Update watchlist status when watchlist changes
+        setIsInWatchlist(message.watchlist?.includes(sessionId) || false);
       }
     };
 
@@ -128,6 +137,14 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
 
   const cancelTerminate = () => {
     setShowConfirm(false);
+  };
+
+  const handleToggleWatchlist = () => {
+    if (isInWatchlist) {
+      vscode.postMessage({ type: "removeFromWatchlist", sessionId });
+    } else {
+      vscode.postMessage({ type: "addToWatchlist", sessionId });
+    }
   };
 
   const handleKeyDown = (e: any) => {
@@ -171,6 +188,17 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
         >
           {sessionTitle}
         </h3>
+        <VSCodeButton
+          appearance="secondary"
+          onClick={handleToggleWatchlist}
+          title={isInWatchlist ? "Remove from watchlist" : "Add to watchlist"}
+          style={{
+            fontSize: "16px",
+            padding: "4px 8px",
+          }}
+        >
+          {isInWatchlist ? "⭐ Watching" : "☆ Watch"}
+        </VSCodeButton>
         <VSCodeButton
           appearance="secondary"
           onClick={handleTerminateClick}
