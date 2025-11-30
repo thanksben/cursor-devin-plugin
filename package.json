@@ -2,10 +2,15 @@
   "name": "devin-cursor-plugin",
   "displayName": "Devin Cursor Plugin",
   "description": "Integrate Devin sessions directly into Cursor",
+  "publisher": "thanksben",
   "icon": "assets/logo.png",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "engines": {
     "vscode": "^1.85.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/thanksben/cursor-devin-plugin"
   },
   "categories": [
     "Other"
