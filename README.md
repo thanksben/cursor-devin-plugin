@@ -1,6 +1,6 @@
-# Devin Cursor Plugin
+# Devin Sessions - AI Coding Assistant
 
-Integrate Devin AI sessions directly into your Cursor/VSCode workflow. View, manage, and interact with your Devin sessions without leaving your code editor.
+Integrate Devin AI sessions directly into your editor. View, manage, and interact with your Devin sessions without leaving your code. Works with VS Code, Cursor, Antigravity, and other compatible editors.
 
 ## Features
 

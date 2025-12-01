@@ -1,10 +1,11 @@
 {
-  "name": "devin-cursor-plugin",
-  "displayName": "Devin Cursor Plugin",
-  "description": "Integrate Devin sessions directly into Cursor",
+  "name": "devin-sessions",
+  "displayName": "Devin Sessions - AI Coding Assistant",
+  "description": "Integrate Devin AI sessions directly into your editor. View, manage, chat with, and create Devin sessions without leaving your code. Works with VS Code, Cursor, and other compatible editors.",
   "publisher": "thanksben",
   "icon": "assets/logo.png",
-  "version": "0.6.0",
+  "version": "0.7.0",
+  "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
@@ -12,9 +13,34 @@
     "type": "git",
     "url": "https://github.com/thanksben/cursor-devin-plugin"
   },
+  "bugs": {
+    "url": "https://github.com/thanksben/cursor-devin-plugin/issues"
+  },
+  "homepage": "https://github.com/thanksben/cursor-devin-plugin#readme",
+  "keywords": [
+    "devin",
+    "devin ai",
+    "devin sessions",
+    "ai assistant",
+    "ai coding assistant",
+    "ai pair programming",
+    "ai developer",
+    "autonomous coding",
+    "code generation",
+    "ai chat",
+    "coding copilot",
+    "ai agent",
+    "software engineer ai"
+  ],
   "categories": [
+    "Programming Languages",
+    "Chat",
     "Other"
   ],
+  "galleryBanner": {
+    "color": "#1a1a2e",
+    "theme": "dark"
+  },
   "activationEvents": [
     "onCommand:devin.openSessions",
     "onCommand:devin.setApiKey",
