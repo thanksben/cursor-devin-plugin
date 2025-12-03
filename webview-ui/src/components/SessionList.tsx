@@ -7,6 +7,7 @@ import {
   VSCodeDataGridCell,
   VSCodeDataGridRow,
   VSCodeTextField,
+  VSCodeTextArea,
   VSCodeProgressRing,
   VSCodeCheckbox,
 } from "@vscode/webview-ui-toolkit/react";
@@ -331,20 +332,25 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
         style={{
           padding: "0 1rem 1rem 1rem",
           display: "flex",
+          flexDirection: "column",
           gap: "0.5rem",
         }}
       >
-        <VSCodeTextField
-          placeholder="New session prompt..."
+        <VSCodeTextArea
+          placeholder="Enter your session prompt... (supports multiple lines)"
           value={newSessionPrompt}
           onInput={(e: any) => setNewSessionPrompt(e.target.value)}
-          style={{ flexGrow: 1 }}
+          rows={3}
+          resize="vertical"
+          style={{ width: "100%" }}
         >
           Create New Session
-        </VSCodeTextField>
-        <VSCodeButton onClick={handleCreateSession} disabled={creating}>
-          {creating ? "Creating..." : "+ Create"}
-        </VSCodeButton>
+        </VSCodeTextArea>
+        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+          <VSCodeButton onClick={handleCreateSession} disabled={creating}>
+            {creating ? "Creating..." : "+ Create"}
+          </VSCodeButton>
+        </div>
       </div>
 
       <div style={{ flexGrow: 1, overflowY: "auto", minHeight: 0 }}>
