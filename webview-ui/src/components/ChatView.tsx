@@ -64,12 +64,27 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
 
           const mappedMsgs: Message[] = rawMsgs.map((msg: any) => {
             let role = "assistant";
+            
+            // Check various ways to identify user messages
             if (msg.role) {
+              // If role is explicitly set, use it
               role = msg.role;
-            } else if (msg.type === "initial_user_message") {
+            } else if (msg.type === "initial_user_message" || msg.type === "user_message") {
               role = "user";
-            } else if (msg.type === "devin_message") {
+            } else if (msg.type === "devin_message" || msg.type === "assistant_message") {
               role = "assistant";
+            } else if (msg.sender === "user") {
+              role = "user";
+            } else if (msg.sender === "assistant" || msg.sender === "devin") {
+              role = "assistant";
+            } else if (!msg.type && !msg.sender && !msg.role) {
+              // If no role information is available, check content or assume based on position
+              // This is a fallback - ideally all messages should have proper role info
+              const content = (msg.content || msg.message || "").toLowerCase();
+              // Simple heuristic: if it looks like a question or short command, it might be from user
+              if (content.includes('?') || content.length < 50 && content.split(' ').length < 10) {
+                role = "user";
+              }
             }
 
             const content = msg.content || msg.message || "";
