@@ -4,7 +4,7 @@
   "description": "Integrate Devin AI sessions directly into your editor. View, manage, chat with, and create Devin sessions without leaving your code. Works with VS Code, Cursor, and other compatible editors.",
   "publisher": "thanksben",
   "icon": "assets/logo.png",
-  "version": "0.9.0",
+  "version": "1.0.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
