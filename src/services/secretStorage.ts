@@ -38,4 +38,12 @@ export class SecretStorageManager {
   async setUserEmail(email: string): Promise<void> {
     await this._secretStorage.store("devin.userEmail", email);
   }
+
+  async getOrgId(): Promise<string | undefined> {
+    return await this._secretStorage.get("devin.orgId");
+  }
+
+  async setOrgId(orgId: string): Promise<void> {
+    await this._secretStorage.store("devin.orgId", orgId);
+  }
 }

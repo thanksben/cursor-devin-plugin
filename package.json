@@ -4,7 +4,7 @@
   "description": "Integrate Devin AI sessions directly into your editor. View, manage, chat with, and create Devin sessions without leaving your code. Works with VS Code, Cursor, and other compatible editors.",
   "publisher": "thanksben",
   "icon": "assets/logo.png",
-  "version": "0.8.0",
+  "version": "0.9.0",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
@@ -44,6 +44,7 @@
   "activationEvents": [
     "onCommand:devin.openSessions",
     "onCommand:devin.setApiKey",
+    "onCommand:devin.setOrgId",
     "onCommand:devin.setUserEmail"
   ],
   "main": "./dist/extension.js",
@@ -57,6 +58,11 @@
       {
         "command": "devin.setApiKey",
         "title": "Devin: Set API Key",
+        "category": "Devin"
+      },
+      {
+        "command": "devin.setOrgId",
+        "title": "Devin: Set Organization ID",
         "category": "Devin"
       },
       {

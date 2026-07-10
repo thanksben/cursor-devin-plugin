@@ -8,19 +8,51 @@ Integrate Devin AI sessions directly into your editor. View, manage, and interac
 - **Filter & Pagination**: Filter sessions locally and paginate through results (10 per page)
 - **My Sessions**: Filter sessions by your email to see only sessions you created
 - **Chat Interface**: View full chat history with Markdown and syntax highlighting support
+- **Live Status Indicator**: See whether Devin is working, waiting for you, or finished — right in the chat header
 - **Real-time Updates**: Messages auto-refresh every 5 seconds
-- **Send Messages**: Communicate with Devin directly from the chat view
+- **Send Messages**: Communicate with Devin directly from the chat view (suspended sessions resume automatically)
 - **Create Sessions**: Start new Devin sessions with a single click
-- **Pull Request Links**: Quick access to PRs associated with sessions
-- **Secure Storage**: API Key and email stored securely using VSCode's Secret Storage (OS keychain)
+- **Pull Request Links**: Quick access to PRs (with their state) associated with sessions
+- **Session Cost**: See ACUs consumed per session in the chat header
+- **Open in Devin**: Jump to the session on app.devin.ai from the chat header
+- **Secure Storage**: API key, organization ID, and email stored securely using VSCode's Secret Storage (OS keychain)
+
+> This extension uses the Devin **API v3**, which requires a service user API key (prefix `cog_`) and your organization ID (prefix `org-`). Legacy `apk_` keys from the deprecated v1 API will not work.
 
 ## Installation & Setup
 
-### Step 1: Get Your Devin API Key
+### Step 1: Create a Service User and Get Your API Key
 
-1. Navigate to [https://app.devin.ai/settings/api-keys](https://app.devin.ai/settings/api-keys)
-2. Click "Create New API Key" or copy an existing key
-3. Save the key somewhere temporarily (you'll paste it in the next step)
+The v3 API authenticates with **service users** instead of personal API keys:
+
+1. In the Devin web app, go to **Settings > Devin API > Service users** (URL looks like `https://app.devin.ai/org/<your-org-slug>/settings/devin-api?tab=service-users`)
+2. Click **Provision** to create a service user with **Organization** scope, and assign it a role with at least these permissions:
+   - `ViewOrgSessions` — list sessions and read chat history
+   - `ManageOrgSessions` — create sessions, send messages, terminate
+   - `ViewOrgMembership` (optional) — enables the "Show My Sessions Only" email filter
+   - `ImpersonateOrgSessions` (optional) — attributes sessions you create to your own user account instead of the service user
+3. Generate an API key for the service user — it starts with `cog_` and is **shown only once**, so copy it immediately
+
+> ⚠️ Keys from the "Legacy API" tab (prefix `apk_` or `apk_user_`) do **not** work with this extension — they only work with the deprecated v1/v2 APIs.
+
+### Step 1b: Find Your Organization ID
+
+The extension needs your organization ID with the `org-` prefix (e.g. `org-b3f7...`). This is **not** the org name/slug that appears in the web app URL (`/org/your-org-slug/...`).
+
+If it's not displayed on the Service users page, use one of these methods:
+
+- **Browser DevTools (most reliable)**: on any app.devin.ai page, open DevTools (`Cmd+Option+I`) → **Network** tab → refresh the page → filter for `organizations`. The web app's own API calls contain your ID in the URL path: `/organizations/org-.../`
+- **Service user details**: click a service user row or open the key-creation dialog — the example `curl` snippet includes `/v3/organizations/org-.../`
+- **API (enterprise-scoped keys only)**: `curl -H "Authorization: Bearer cog_YOUR_KEY" https://api.devin.ai/v3/enterprise/organizations` lists all orgs with their IDs
+
+To verify you have the right value:
+
+```bash
+curl -H "Authorization: Bearer cog_YOUR_KEY" \
+  "https://api.devin.ai/v3/organizations/YOUR_ORG_ID/sessions?first=1"
+```
+
+A correct org ID returns JSON with an `items` array; a wrong one returns a 403/404.
 
 ### Step 2: Install the Extension
 
@@ -59,17 +91,23 @@ After installing the extension, follow these steps to set it up:
 
    - Open Command Palette: `Cmd+Shift+P` (Mac) or `Ctrl+Shift+P` (Windows/Linux)
    - Type and select: `Devin: Set API Key`
-   - Paste your API key from Step 1
+   - Paste your service user API key (`cog_...`) from Step 1
    - You should see: "Devin API Key saved successfully."
 
-2. **Set Your Email** (Optional - for filtering):
+2. **Set Your Organization ID** (Required):
+
+   - Open Command Palette: `Cmd+Shift+P`
+   - Type and select: `Devin: Set Organization ID`
+   - Paste your organization ID (`org-...`) from Step 1b
+
+3. **Set Your Email** (Optional - for filtering):
 
    - Open Command Palette: `Cmd+Shift+P`
    - Type and select: `Devin: Set User Email`
    - Enter your email address (the one associated with your Devin account)
-   - This enables the "Show My Sessions Only" toggle in the UI
+   - This enables the "Show My Sessions Only" toggle in the UI (requires the `ViewOrgMembership` permission on the service user)
 
-3. **Open Devin Sessions**:
+4. **Open Devin Sessions**:
    - Open Command Palette: `Cmd+Shift+P`
    - Type and select: `Devin: Open Sessions`
    - The Devin Sessions panel will open showing your sessions
@@ -98,7 +136,8 @@ After installing the extension, follow these steps to set it up:
 Access these via Command Palette (`Cmd+Shift+P`):
 
 - **`Devin: Open Sessions`**: Open the main Devin Sessions panel
-- **`Devin: Set API Key`**: Set or update your Devin API key
+- **`Devin: Set API Key`**: Set or update your Devin service user API key (`cog_...`)
+- **`Devin: Set Organization ID`**: Set your Devin organization ID (`org-...`)
 - **`Devin: Set User Email`**: Set your email for session filtering
 
 ## Configuration
@@ -111,7 +150,8 @@ You can configure the following in VSCode settings:
 
 - Your API key is stored securely using VSCode's `SecretStorage` API, which leverages your operating system's keychain (Keychain Access on macOS, Windows Credential Manager, or libsecret on Linux)
 - The API key is never saved in plain text configuration files
-- Your email preference is also stored securely
+- Your organization ID and email preference are also stored securely
+- Grant your service user only the permissions the extension needs (least privilege)
 
 ## Development
 
@@ -130,26 +170,35 @@ Press `F5` in VSCode to launch the Extension Development Host with the extension
 
 **No sessions showing up?**
 
-- Verify your API key is correct: Run `Devin: Set API Key` again
+- Verify your API key is a service user key (`cog_...`): Run `Devin: Set API Key` again — legacy `apk_` keys do not work with the v3 API
+- Verify your organization ID (`org-...`): Run `Devin: Set Organization ID` — note this is NOT the org slug from the web app URL (see "Find Your Organization ID" above)
+- Check the service user's role has `ViewOrgSessions`
 - Check the Developer Console: `Cmd+Option+I` in the Extension Development Host
 
-**Messages not displaying?**
+**401 Unauthorized errors?**
 
-- Check the webview console logs for API response structure
-- The plugin expects messages in the format returned by `/v1/sessions/{session_id}`
+- You are likely using a legacy `apk_` key. Create a service user key under Settings > Service Users
+
+**403 Forbidden errors?**
+
+- Your service user's role is missing a permission (see Step 1 of the setup)
 
 **"Show My Sessions Only" toggle not appearing?**
 
 - Make sure you've set your email via `Devin: Set User Email`
+- The service user needs the `ViewOrgMembership` permission to resolve your email to a user ID
 
 ## API Reference
 
-This plugin uses the Devin API:
+This plugin uses the Devin API v3:
 
-- [List Sessions](https://docs.devin.ai/api-reference/sessions/list-sessions)
-- [Session Details](https://docs.devin.ai/api-reference/sessions/retrieve-details-about-an-existing-session)
-- [Create Session](https://docs.devin.ai/api-reference/sessions/create-a-new-devin-session)
-- [Send Message](https://docs.devin.ai/api-reference/sessions/send-a-message-to-an-existing-devin-session)
+- [List Sessions](https://docs.devin.ai/api-reference/v3/sessions/organizations-sessions)
+- [Get Session](https://docs.devin.ai/api-reference/v3/sessions/get-organizations-session)
+- [List Session Messages](https://docs.devin.ai/api-reference/v3/sessions/get-organizations-session-messages)
+- [Create Session](https://docs.devin.ai/api-reference/v3/sessions/post-organizations-sessions)
+- [Send Message](https://docs.devin.ai/api-reference/v3/sessions/post-organizations-sessions-messages)
+- [Terminate Session](https://docs.devin.ai/api-reference/v3/sessions/delete-organizations-sessions)
+- [Authentication](https://docs.devin.ai/api-reference/authentication)
 
 ## License
 

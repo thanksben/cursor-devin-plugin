@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef, useCallback } from "react";
 import { vscode } from "../utilities/vscode";
+import { epochToDate } from "../utilities/time";
 import StatusBadge from "./common/StatusBadge";
 import {
   VSCodeButton,
@@ -12,22 +13,26 @@ import {
   VSCodeCheckbox,
 } from "@vscode/webview-ui-toolkit/react";
 
+interface SessionPullRequest {
+  pr_url: string;
+  pr_state: string | null;
+}
+
 interface Session {
   session_id: string;
-  title: string;
+  title: string | null;
   status: string;
-  updated_at: string;
-  requesting_user_email?: string;
-  pull_request?: {
-    url: string;
-  };
+  status_detail?: string | null;
+  updated_at: number;
+  user_id?: string | null;
+  pull_requests?: SessionPullRequest[];
 }
 
 interface SessionListProps {
   onSelectSession: (sessionId: string) => void;
 }
 
-const SEARCH_LIMIT = 1000; // Fetch up to 1000 sessions when searching
+const SEARCH_LIMIT = 600; // v3 pages cap at 200; extension follows cursors
 const PAGE_LIMIT = 10;
 const DEBOUNCE_MS = 300; // Debounce search input
 
@@ -39,24 +44,38 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
   const [filter, setFilter] = useState("");
   const [creating, setCreating] = useState(false);
   const [newSessionPrompt, setNewSessionPrompt] = useState("");
-  const [offset, setOffset] = useState(0);
   const [emailSet, setEmailSet] = useState(false);
   const [showMySessions, setShowMySessions] = useState(false);
   const [watchlist, setWatchlist] = useState<string[]>([]);
   const [showWatchlistOnly, setShowWatchlistOnly] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
 
+  // Cursor-based pagination: pageCursors[i] is the "after" cursor used to
+  // fetch page i (null for the first page).
+  const [pageCursors, setPageCursors] = useState<(string | null)[]>([null]);
+  const [pageIndex, setPageIndex] = useState(0);
+  const [endCursor, setEndCursor] = useState<string | null>(null);
+  const [hasNextPage, setHasNextPage] = useState(false);
+
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
   const searchSessionsFetched = useRef(false); // Track if we've already fetched search data
 
-  const fetchSessions = (currentOffset: number, mySessions: boolean) => {
+  const fetchSessions = (after: string | null, mySessions: boolean) => {
     setLoading(true);
     vscode.postMessage({
       type: "listSessions",
       limit: PAGE_LIMIT,
-      offset: currentOffset,
+      after,
       mySessions,
     });
+  };
+
+  const resetToFirstPage = (mySessions: boolean) => {
+    setPageCursors([null]);
+    setPageIndex(0);
+    setEndCursor(null);
+    setHasNextPage(false);
+    fetchSessions(null, mySessions);
   };
 
   const fetchSearchSessions = useCallback(
@@ -70,7 +89,6 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
       vscode.postMessage({
         type: "listSessions",
         limit: SEARCH_LIMIT,
-        offset: 0,
         mySessions,
         isSearch: true, // Flag to identify search requests
       });
@@ -111,7 +129,7 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
   useEffect(() => {
     vscode.postMessage({ type: "checkEmailStatus" });
     vscode.postMessage({ type: "getWatchlist" });
-    fetchSessions(0, false); // Default to all sessions
+    fetchSessions(null, false); // Default to all sessions
 
     const handleMessage = (event: MessageEvent) => {
       const message = event.data;
@@ -123,12 +141,13 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
         } else {
           // Handle normal paginated response
           setSessions(message.sessions);
+          setEndCursor(message.endCursor ?? null);
+          setHasNextPage(message.hasNextPage ?? false);
           setLoading(false);
         }
       } else if (message.type === "sessionCreated") {
         setCreating(false);
         setNewSessionPrompt("");
-        fetchSessions(0, showMySessions);
         if (message.session && message.session.session_id) {
           onSelectSession(message.session.session_id);
         }
@@ -155,22 +174,28 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
   };
 
   const handleNextPage = () => {
-    const newOffset = offset + PAGE_LIMIT;
-    setOffset(newOffset);
-    fetchSessions(newOffset, showMySessions);
+    if (!hasNextPage || !endCursor) return;
+    const newIndex = pageIndex + 1;
+    setPageCursors((prev) => {
+      const next = prev.slice(0, newIndex);
+      next.push(endCursor);
+      return next;
+    });
+    setPageIndex(newIndex);
+    fetchSessions(endCursor, showMySessions);
   };
 
   const handlePrevPage = () => {
-    const newOffset = Math.max(0, offset - PAGE_LIMIT);
-    setOffset(newOffset);
-    fetchSessions(newOffset, showMySessions);
+    if (pageIndex === 0) return;
+    const newIndex = pageIndex - 1;
+    setPageIndex(newIndex);
+    fetchSessions(pageCursors[newIndex] ?? null, showMySessions);
   };
 
   const handleToggleMySessions = () => {
     const newValue = !showMySessions;
     setShowMySessions(newValue);
-    setOffset(0);
-    fetchSessions(0, newValue);
+    resetToFirstPage(newValue);
     // Reset and re-fetch search results if in search mode (filter changed)
     if (isSearchMode && filter.trim()) {
       searchSessionsFetched.current = false; // Reset to allow new fetch
@@ -178,7 +203,6 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
       vscode.postMessage({
         type: "listSessions",
         limit: SEARCH_LIMIT,
-        offset: 0,
         mySessions: newValue,
         isSearch: true,
       });
@@ -197,7 +221,6 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
       vscode.postMessage({
         type: "listSessions",
         limit: SEARCH_LIMIT,
-        offset: 0,
         mySessions: showMySessions,
         isSearch: true,
       });
@@ -232,9 +255,9 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
 
   let filteredSessions = baseSessions.filter(
     (session) =>
-      session.title.toLowerCase().includes(filter.toLowerCase()) ||
+      (session.title || "").toLowerCase().includes(filter.toLowerCase()) ||
       session.status.toLowerCase().includes(filter.toLowerCase()) ||
-      (session.requesting_user_email || "")
+      (session.status_detail || "")
         .toLowerCase()
         .includes(filter.toLowerCase())
   );
@@ -264,7 +287,7 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
       >
         <div style={{ display: "flex", gap: "1rem", alignItems: "flex-end" }}>
           <VSCodeTextField
-            placeholder="Search sessions (searches up to 1000)..."
+            placeholder="Search sessions (searches up to 600)..."
             value={filter}
             onInput={(e: any) => handleFilterInput(e.target.value)}
             style={{ flexGrow: 1 }}
@@ -365,7 +388,7 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
             <VSCodeProgressRing></VSCodeProgressRing>
           </div>
         ) : (
-          <VSCodeDataGrid grid-template-columns="40px 3fr 2fr minmax(60px, 0.8fr) 40px 1.5fr">
+          <VSCodeDataGrid grid-template-columns="40px 3fr minmax(90px, 1fr) 40px 1.5fr">
             <VSCodeDataGridRow
               row-type="header"
               style={{ position: "sticky", top: 0, zIndex: 1 }}
@@ -377,97 +400,85 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
                 Title
               </VSCodeDataGridCell>
               <VSCodeDataGridCell cell-type="columnheader" grid-column="3">
-                User
-              </VSCodeDataGridCell>
-              <VSCodeDataGridCell cell-type="columnheader" grid-column="4">
                 PR
               </VSCodeDataGridCell>
               <VSCodeDataGridCell
                 cell-type="columnheader"
-                grid-column="5"
+                grid-column="4"
                 style={{ textAlign: "center" }}
               >
                 ●
               </VSCodeDataGridCell>
-              <VSCodeDataGridCell cell-type="columnheader" grid-column="6">
+              <VSCodeDataGridCell cell-type="columnheader" grid-column="5">
                 Updated
               </VSCodeDataGridCell>
             </VSCodeDataGridRow>
-            {filteredSessions.map((session) => (
-              <VSCodeDataGridRow
-                key={session.session_id}
-                onClick={() => onSelectSession(session.session_id)}
-                style={{ cursor: "pointer" }}
-              >
-                <VSCodeDataGridCell grid-column="1">
-                  <span
-                    onClick={(e) =>
-                      handleToggleWatchlistItem(e, session.session_id)
-                    }
-                    style={{
-                      cursor: "pointer",
-                      fontSize: "16px",
-                      opacity: isInWatchlist(session.session_id) ? 1 : 0.3,
-                      transition: "opacity 0.2s",
-                    }}
-                    title={
-                      isInWatchlist(session.session_id)
-                        ? "Remove from watchlist"
-                        : "Add to watchlist"
-                    }
-                  >
-                    ⭐
-                  </span>
-                </VSCodeDataGridCell>
-                <VSCodeDataGridCell grid-column="2">
-                  {session.title}
-                </VSCodeDataGridCell>
-                <VSCodeDataGridCell
-                  grid-column="3"
-                  style={{
-                    fontSize: "12px",
-                    opacity: 0.8,
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                  }}
-                  title={session.requesting_user_email || ""}
+            {filteredSessions.map((session) => {
+              const pr = session.pull_requests?.[0];
+              return (
+                <VSCodeDataGridRow
+                  key={session.session_id}
+                  onClick={() => onSelectSession(session.session_id)}
+                  style={{ cursor: "pointer" }}
                 >
-                  {session.requesting_user_email || "—"}
-                </VSCodeDataGridCell>
-                <VSCodeDataGridCell grid-column="4">
-                  {session.pull_request && (
-                    <VSCodeButton
-                      appearance="secondary"
-                      aria-label="Pull Request"
-                      onClick={(e: any) =>
-                        handleOpenPR(e, session.pull_request!.url)
+                  <VSCodeDataGridCell grid-column="1">
+                    <span
+                      onClick={(e) =>
+                        handleToggleWatchlistItem(e, session.session_id)
                       }
                       style={{
-                        fontSize: "12px",
-                        whiteSpace: "nowrap",
-                        padding: "4px 8px",
+                        cursor: "pointer",
+                        fontSize: "16px",
+                        opacity: isInWatchlist(session.session_id) ? 1 : 0.3,
+                        transition: "opacity 0.2s",
                       }}
+                      title={
+                        isInWatchlist(session.session_id)
+                          ? "Remove from watchlist"
+                          : "Add to watchlist"
+                      }
                     >
-                      PR
-                    </VSCodeButton>
-                  )}
-                </VSCodeDataGridCell>
-                <VSCodeDataGridCell
-                  grid-column="5"
-                  style={{
-                    display: "flex",
-                    justifyContent: "center",
-                    alignItems: "center",
-                  }}
-                >
-                  <StatusBadge status={session.status} />
-                </VSCodeDataGridCell>
-                <VSCodeDataGridCell grid-column="6">
-                  {new Date(session.updated_at).toLocaleString()}
-                </VSCodeDataGridCell>
-              </VSCodeDataGridRow>
-            ))}
+                      ⭐
+                    </span>
+                  </VSCodeDataGridCell>
+                  <VSCodeDataGridCell grid-column="2">
+                    {session.title || "Untitled"}
+                  </VSCodeDataGridCell>
+                  <VSCodeDataGridCell grid-column="3">
+                    {pr && (
+                      <VSCodeButton
+                        appearance="secondary"
+                        aria-label="Pull Request"
+                        title={pr.pr_url}
+                        onClick={(e: any) => handleOpenPR(e, pr.pr_url)}
+                        style={{
+                          fontSize: "12px",
+                          whiteSpace: "nowrap",
+                          padding: "4px 8px",
+                        }}
+                      >
+                        {pr.pr_state ? `PR ${pr.pr_state}` : "PR"}
+                      </VSCodeButton>
+                    )}
+                  </VSCodeDataGridCell>
+                  <VSCodeDataGridCell
+                    grid-column="4"
+                    style={{
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <StatusBadge
+                      status={session.status_detail || session.status}
+                    />
+                  </VSCodeDataGridCell>
+                  <VSCodeDataGridCell grid-column="5">
+                    {epochToDate(session.updated_at).toLocaleString()}
+                  </VSCodeDataGridCell>
+                </VSCodeDataGridRow>
+              );
+            })}
           </VSCodeDataGrid>
         )}
       </div>
@@ -484,17 +495,15 @@ const SessionList: React.FC<SessionListProps> = ({ onSelectSession }) => {
         >
           <VSCodeButton
             onClick={handlePrevPage}
-            disabled={offset === 0 || loading}
+            disabled={pageIndex === 0 || loading}
             appearance="secondary"
           >
             Previous
           </VSCodeButton>
-          <span style={{ alignSelf: "center" }}>
-            Page {Math.floor(offset / PAGE_LIMIT) + 1}
-          </span>
+          <span style={{ alignSelf: "center" }}>Page {pageIndex + 1}</span>
           <VSCodeButton
             onClick={handleNextPage}
-            disabled={loading || sessions.length < PAGE_LIMIT}
+            disabled={loading || !hasNextPage}
             appearance="secondary"
           >
             Next

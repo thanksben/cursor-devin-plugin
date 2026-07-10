@@ -12,15 +12,40 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.commands.registerCommand("devin.setApiKey", async () => {
       const apiKey = await vscode.window.showInputBox({
-        prompt: "Enter your Devin API Key",
+        prompt:
+          'Enter your Devin service user API key (prefix "cog_", from Settings > Service Users)',
         password: true,
         ignoreFocusOut: true,
+        placeHolder: "cog_...",
       });
 
       if (apiKey) {
         await SecretStorageManager.instance.setApiKey(apiKey);
         vscode.window.showInformationMessage(
           "Devin API Key saved successfully."
+        );
+      }
+    })
+  );
+
+  // Register command to set Organization ID (required by the v3 API)
+  context.subscriptions.push(
+    vscode.commands.registerCommand("devin.setOrgId", async () => {
+      const orgId = await vscode.window.showInputBox({
+        prompt:
+          "Enter your Devin organization ID (shown on Settings > Service Users)",
+        ignoreFocusOut: true,
+        placeHolder: "org-...",
+        validateInput: (value) =>
+          value && !value.startsWith("org-")
+            ? 'Organization IDs start with "org-"'
+            : undefined,
+      });
+
+      if (orgId) {
+        await SecretStorageManager.instance.setOrgId(orgId);
+        vscode.window.showInformationMessage(
+          "Devin Organization ID saved successfully."
         );
       }
     })
@@ -77,33 +102,43 @@ class DevinPanel {
 
         if (!apiKey) {
           vscode.window.showErrorMessage(
-            'Devin API Key not found. Please run "Devin: Set API Key" command.'
+            'Devin API Key not found. The v3 API requires a service user key (prefix "cog_") — create one under Settings > Service Users, then run "Devin: Set API Key".'
+          );
+          return;
+        }
+
+        const orgId = await SecretStorageManager.instance.getOrgId();
+
+        if (!orgId) {
+          vscode.window.showErrorMessage(
+            'Devin Organization ID not found. Find it on Settings > Service Users (prefix "org-"), then run "Devin: Set Organization ID".'
           );
           return;
         }
 
         switch (message.type) {
           case "checkEmailStatus":
-            const email = await SecretStorageManager.instance.getUserEmail();
-            this._panel.webview.postMessage({
-              type: "emailStatusResponse",
-              emailSet: !!email,
-            });
+            this._checkEmailStatus(apiKey, orgId);
             break;
           case "listSessions":
-            this._listSessions(apiKey, message);
+            this._listSessions(apiKey, orgId, message);
             break;
           case "getSession":
-            this._getSession(apiKey, message.sessionId);
+            this._getSession(apiKey, orgId, message.sessionId);
             break;
           case "createSession":
-            this._createSession(apiKey, message.prompt);
+            this._createSession(apiKey, orgId, message.prompt);
             break;
           case "sendMessage":
-            this._sendMessage(apiKey, message.sessionId, message.message);
+            this._sendMessage(
+              apiKey,
+              orgId,
+              message.sessionId,
+              message.message
+            );
             break;
           case "stopSession":
-            this._stopSession(apiKey, message.sessionId);
+            this._stopSession(apiKey, orgId, message.sessionId);
             break;
           case "openLink":
             if (message.url) {
@@ -164,40 +199,86 @@ class DevinPanel {
     }
   }
 
-  private async _listSessions(apiKey: string, params: any) {
-    try {
-      const userEmail = await SecretStorageManager.instance.getUserEmail();
-      const filterEmail = params.mySessions !== false ? userEmail : undefined;
+  /**
+   * The email filter only works when the stored email resolves to a v3
+   * user_id (requires the ViewOrgMembership permission on the service user).
+   */
+  private async _resolveMyUserId(
+    apiKey: string,
+    orgId: string
+  ): Promise<string | null> {
+    const email = await SecretStorageManager.instance.getUserEmail();
+    if (!email) {
+      return null;
+    }
+    return DevinApiService.instance.resolveUserIdByEmail(apiKey, orgId, email);
+  }
 
-      const sessions = await DevinApiService.instance.listSessions(
+  private async _checkEmailStatus(apiKey: string, orgId: string) {
+    const userId = await this._resolveMyUserId(apiKey, orgId);
+    this._panel.webview.postMessage({
+      type: "emailStatusResponse",
+      emailSet: !!userId,
+    });
+  }
+
+  private async _listSessions(apiKey: string, orgId: string, params: any) {
+    try {
+      let userIds: string[] | undefined;
+      if (params.mySessions) {
+        const userId = await this._resolveMyUserId(apiKey, orgId);
+        if (userId) {
+          userIds = [userId];
+        }
+      }
+
+      if (params.isSearch) {
+        const sessions = await DevinApiService.instance.listAllSessions(
+          apiKey,
+          orgId,
+          params.limit || 600,
+          userIds
+        );
+        this._panel.webview.postMessage({
+          type: "sessionsResponse",
+          sessions,
+          isSearch: true,
+        });
+        return;
+      }
+
+      const page = await DevinApiService.instance.listSessions(
         apiKey,
+        orgId,
         params.limit || 10,
-        params.offset || 0,
+        params.after || null,
         params.tags,
-        filterEmail
+        userIds
       );
       this._panel.webview.postMessage({
         type: "sessionsResponse",
-        sessions,
-        total: sessions.length,
-        isSearch: params.isSearch || false,
+        sessions: page.items,
+        endCursor: page.endCursor,
+        hasNextPage: page.hasNextPage,
+        isSearch: false,
       });
     } catch (e) {
       vscode.window.showErrorMessage("Failed to list sessions");
     }
   }
 
-  private async _getSession(apiKey: string, sessionId: string) {
+  private async _getSession(apiKey: string, orgId: string, sessionId: string) {
     try {
-      const session = await DevinApiService.instance.getSession(
-        apiKey,
-        sessionId
-      );
+      const [session, messages] = await Promise.all([
+        DevinApiService.instance.getSession(apiKey, orgId, sessionId),
+        DevinApiService.instance.getSessionMessages(apiKey, orgId, sessionId),
+      ]);
       if (session) {
         this._panel.webview.postMessage({
           type: "sessionDetailsResponse",
           sessionId,
           session,
+          messages,
         });
       }
     } catch (e) {
@@ -205,15 +286,20 @@ class DevinPanel {
     }
   }
 
-  private async _createSession(apiKey: string, prompt: string) {
+  private async _createSession(apiKey: string, orgId: string, prompt: string) {
     try {
+      // Attribute the session to the user when possible (needs
+      // ImpersonateOrgSessions; the API client falls back on 403).
+      const userId = await this._resolveMyUserId(apiKey, orgId);
       const session = await DevinApiService.instance.createSession(
         apiKey,
-        prompt
+        orgId,
+        prompt,
+        userId ?? undefined
       );
       if (session) {
         vscode.window.showInformationMessage(
-          `Session created: ${session.title}`
+          `Session created: ${session.title || session.session_id}`
         );
         this._panel.webview.postMessage({ type: "sessionCreated", session });
       }
@@ -224,12 +310,14 @@ class DevinPanel {
 
   private async _sendMessage(
     apiKey: string,
+    orgId: string,
     sessionId: string,
     message: string
   ) {
     try {
       const success = await DevinApiService.instance.sendMessage(
         apiKey,
+        orgId,
         sessionId,
         message
       );
@@ -241,15 +329,20 @@ class DevinPanel {
     }
   }
 
-  private async _stopSession(apiKey: string, sessionId: string) {
+  private async _stopSession(apiKey: string, orgId: string, sessionId: string) {
     try {
-      const success = await DevinApiService.instance.stopSession(
+      const session = await DevinApiService.instance.stopSession(
         apiKey,
+        orgId,
         sessionId
       );
-      if (success) {
+      if (session) {
         vscode.window.showInformationMessage("Session terminated successfully");
-        this._panel.webview.postMessage({ type: "sessionStopped", sessionId });
+        this._panel.webview.postMessage({
+          type: "sessionStopped",
+          sessionId,
+          session,
+        });
       }
     } catch (e) {
       vscode.window.showErrorMessage("Failed to terminate session");

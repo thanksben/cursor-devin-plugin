@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef } from "react";
 import { vscode } from "../utilities/vscode";
+import { epochToDate } from "../utilities/time";
 import MessageBubble from "./MessageBubble";
+import StatusBadge from "./common/StatusBadge";
 import {
   VSCodeButton,
   VSCodeTextArea,
@@ -18,12 +20,21 @@ interface Message {
   created_at?: string;
 }
 
+interface SessionPullRequest {
+  pr_url: string;
+  pr_state: string | null;
+}
+
 const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [loading, setLoading] = useState(true);
   const [sessionTitle, setSessionTitle] = useState("");
+  const [sessionStatus, setSessionStatus] = useState<string | null>(null);
+  const [sessionUrl, setSessionUrl] = useState<string | null>(null);
+  const [acusConsumed, setAcusConsumed] = useState<number | null>(null);
+  const [pullRequests, setPullRequests] = useState<SessionPullRequest[]>([]);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [terminating, setTerminating] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -53,33 +64,33 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
       const message = event.data;
       if (message.type === "sessionDetailsResponse") {
         if (message.sessionId === sessionId) {
-          let rawMsgs: any[] = [];
-          if (Array.isArray(message.session.messages)) {
-            rawMsgs = message.session.messages;
-          } else if (Array.isArray(message.session.events)) {
-            rawMsgs = message.session.events.filter(
-              (e: any) => e.type === "chat" || e.role || e.message
-            );
-          }
-
-          const mappedMsgs: Message[] = rawMsgs.map((msg: any) => {
-            let role = "assistant";
-            if (msg.role) {
-              role = msg.role;
-            } else if (msg.type === "initial_user_message") {
-              role = "user";
-            } else if (msg.type === "devin_message") {
-              role = "assistant";
-            }
-
-            const content = msg.content || msg.message || "";
-            const created_at = msg.created_at || msg.timestamp;
-
-            return { role, content, created_at };
-          });
+          // v3: messages come from the dedicated /messages endpoint,
+          // chronological, with { source: "devin" | "user", message, created_at }.
+          const rawMsgs: any[] = Array.isArray(message.messages)
+            ? message.messages
+            : [];
+          const mappedMsgs: Message[] = rawMsgs.map((msg: any) => ({
+            role: msg.source === "user" ? "user" : "assistant",
+            content: msg.message || "",
+            created_at:
+              typeof msg.created_at === "number"
+                ? epochToDate(msg.created_at).toISOString()
+                : msg.created_at,
+          }));
 
           setMessages(mappedMsgs);
           setSessionTitle(message.session.title || "Session");
+          // status_detail disambiguates "running" (working vs waiting for user)
+          setSessionStatus(
+            message.session.status_detail || message.session.status || null
+          );
+          setSessionUrl(message.session.url || null);
+          setAcusConsumed(
+            typeof message.session.acus_consumed === "number"
+              ? message.session.acus_consumed
+              : null
+          );
+          setPullRequests(message.session.pull_requests || []);
           setLoading(false);
         }
       } else if (message.type === "messageSent") {
@@ -90,6 +101,8 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
       } else if (message.type === "sessionStopped") {
         setTerminating(false);
         setShowConfirm(false);
+        // Show the terminated session's final status
+        fetchSessionDetails();
       } else if (message.type === "isInWatchlistResponse") {
         if (message.sessionId === sessionId) {
           setIsInWatchlist(message.isInWatchlist);
@@ -137,6 +150,16 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
 
   const cancelTerminate = () => {
     setShowConfirm(false);
+  };
+
+  const handleOpenInDevin = () => {
+    if (sessionUrl) {
+      vscode.postMessage({ type: "openLink", url: sessionUrl });
+    }
+  };
+
+  const handleOpenPR = (url: string) => {
+    vscode.postMessage({ type: "openLink", url });
   };
 
   const handleToggleWatchlist = () => {
@@ -188,6 +211,40 @@ const ChatView: React.FC<ChatViewProps> = ({ sessionId, onBack }) => {
         >
           {sessionTitle}
         </h3>
+        {sessionStatus && <StatusBadge status={sessionStatus} showLabel />}
+        {acusConsumed !== null && (
+          <span
+            title="Agent Compute Units consumed by this session"
+            style={{
+              fontSize: "12px",
+              opacity: 0.8,
+              whiteSpace: "nowrap",
+              cursor: "help",
+            }}
+          >
+            {acusConsumed.toFixed(1)} ACUs
+          </span>
+        )}
+        {pullRequests.map((pr) => (
+          <VSCodeButton
+            key={pr.pr_url}
+            appearance="secondary"
+            onClick={() => handleOpenPR(pr.pr_url)}
+            title={pr.pr_url}
+            style={{ whiteSpace: "nowrap" }}
+          >
+            {pr.pr_state ? `PR ${pr.pr_state}` : "PR"} ↗
+          </VSCodeButton>
+        ))}
+        {sessionUrl && (
+          <VSCodeButton
+            appearance="secondary"
+            onClick={handleOpenInDevin}
+            title="Open this session on app.devin.ai"
+          >
+            Open in Devin ↗
+          </VSCodeButton>
+        )}
         <VSCodeButton
           appearance="secondary"
           onClick={handleToggleWatchlist}
