@@ -1,0 +1,11 @@
+.vscode/**
+.github/**
+node_modules/**
+src/**
+webview-ui/**
+out/**
+*.vsix
+.gitignore
+tsconfig.json
+webpack.config.js
+**/*.map
